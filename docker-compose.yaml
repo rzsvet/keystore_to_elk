@@ -1,0 +1,80 @@
+version: '3'
+
+services:
+  postgres:
+      image: postgres
+      hostname: postgres
+      environment:
+        POSTGRES_DB: keycloak
+        POSTGRES_USER: keycloak
+        POSTGRES_PASSWORD: password
+      volumes:
+        - ./pgdata:/var/lib/postgresql/data
+      ports:
+        - "5432:5432"      
+      logging:
+        driver: none
+
+  keycloak:
+      image: bitnami/keycloak:21-debian-11
+      hostname: keycloak
+      ports:
+        - "13033:13033"
+        - "13034:13034"
+      environment:
+        KEYCLOAK_DATABASE_HOST: postgres
+        KEYCLOAK_DATABASE_PORT: 5432
+        KEYCLOAK_DATABASE_NAME: keycloak
+        KEYCLOAK_DATABASE_USER: keycloak
+        KEYCLOAK_DATABASE_PASSWORD: password
+        KEYCLOAK_HTTP_PORT: 13033
+        KEYCLOAK_HTTPS_PORT: 13034
+        KEYCLOAK_ADMIN_USER: admin
+        KEYCLOAK_ADMIN_PASSWORD: password
+        KC_LOG: console,gelf
+        KC_LOG_GELF_HOST: tcp:logstash
+        KC_LOG_GELF_PORT: 12201
+        KC_LOG_GELF_FACILITY: "keycloak-dev"
+        KC_LOG_GELF_INCLUDE_LOCATION: "true"
+        KC_LOG_GELF_INCLUDE_MESSAGE_PARAMETERS: "true"
+        KC_LOG_GELF_INCLUDE_STACK_TRACE: "true"
+      depends_on:
+        - postgres
+        - logstash
+        - elasticsearch
+
+  logstash:
+    image: logstash:7.17.10
+    hostname: logstash
+    command: logstash -f /etc/logstash/conf.d/logstash.conf
+    volumes:
+      - ./logstash.conf:/etc/logstash/conf.d/logstash.conf
+    environment:
+      LS_JAVA_OPTS: "-Xmx512m -Xms512m"
+    depends_on:
+      - postgres
+      - elasticsearch
+
+  elasticsearch:
+    image: elasticsearch:7.17.10
+    hostname: elasticsearch
+    volumes:
+      - ./esdata:/usr/share/elasticsearch/data
+    environment:
+      logger.deprecation.level: OFF
+      logger.org.elasticsearch.discovery: OFF
+      xpack.security.enabled: false
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      bootstrap.memory_lock: true
+    logging:
+      driver: none
+
+  kibana:
+    image: kibana:7.17.10
+    ports:
+      - "5601:5601"
+    depends_on:
+      - postgres
+      - logstash
+      - elasticsearch
